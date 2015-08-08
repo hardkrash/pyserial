@@ -67,8 +67,6 @@ UNICODE_MAP = {
     '\x7F': u'\u2421',  # ␡
 }
 
-
-
 def key_description(character):
     """generate a readable description for a key"""
     ascii_code = ord(character)
@@ -285,7 +283,7 @@ class Miniterm(object):
                 LF_MODES[self.convert_outgoing]))
 
     def reader(self):
-        """loop and copy serial->console"""
+        """loop and copy serial->console."""
         try:
             while self.alive and self._reader_alive:
                 data = character(self.serial.read(1))
@@ -325,9 +323,9 @@ class Miniterm(object):
                     for c in data:
                         sys.stdout.write("%s " % c.encode('hex'))
                 sys.stdout.flush()
-        except serial.SerialException as e:
+        except serial.SerialException:
             self.alive = False
-            # would be nice if the console reader could be interruptted at this
+            # would be nice if the console reader could be interrupted at this
             # point...
             raise
 
@@ -499,7 +497,7 @@ class Miniterm(object):
                     menu_active = False
                 elif c == MENUCHARACTER: # next char will be for menu
                     menu_active = True
-                elif c == EXITCHARCTER: 
+                elif c == EXITCHARCTER:
                     self.stop()
                     break                                   # exit app
                 elif c == '\n':
