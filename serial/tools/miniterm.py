@@ -15,6 +15,15 @@ try:
 except ImportError:
     comports = None
 
+COLORS = ('red', 'green')
+try:
+    import colorama
+    colorama.init()  # Enable ANSI colors on Windows, no-op on other platforms.
+    from termcolor import colored
+except ImportError:
+    def colored(val, *args):
+        return val
+
 try:
     raw_input
 except NameError:
@@ -224,6 +233,8 @@ class Miniterm(object):
         self.dtr_state = True
         self.rts_state = True
         self.break_state = False
+        self._last_mapped_char = None
+        self._repr_functions = (self.repr_raw, self.repr_some_control, self.repr_all_control, self.repr_hex, self.repr_pretty)
 
     def _start_reader(self):
         """Start reader thread"""
@@ -282,46 +293,75 @@ class Miniterm(object):
                 REPR_MODES[self.repr_mode],
                 LF_MODES[self.convert_outgoing]))
 
+    def repr_raw(self, data):
+        """No manipulation of data, except '\\r' mapping in Convert CR"""
+        mapped_data = ''
+        for c in data:
+            if c == '\r' and self.convert_outgoing == CONVERT_CR:
+                mapped_data += '\n'
+            else:
+                mapped_data += c
+            self._last_mapped_char = c
+        return mapped_data
+
+    def repr_some_control(self, data):
+        """Generate text as repr produces, except active line ending."""
+        mapped_data = ''
+        # escape non-printable, let pass newlines
+        for c in data:
+            if self.convert_outgoing == CONVERT_CRLF and c in '\r\n':
+                if c == '\n':
+                    mapped_data += '\n'
+                elif c == '\r':
+                    pass
+            elif c == '\n' and self.convert_outgoing == CONVERT_LF:
+                mapped_data += '\n'
+            elif c == '\r' and self.convert_outgoing == CONVERT_CR:
+                mapped_data += '\n'
+            else:
+                mapped_data += repr(c)[1:-1]
+        return mapped_data
+
+    def repr_all_control(self, data):
+        """Generate text as repr produces."""
+        self._last_mapped_char = data[-1:]
+        return repr(data)[1:-1]
+
+    def repr_hex(self, data):
+        """Generate all short hex representation of bytes."""
+        mapped_data = ''
+        for c in data:
+            mapped_data += "{:02X} ".format(ord(c))
+            self._last_mapped_char = c
+        return mapped_data
+
+    def repr_pretty(self, data):
+        """Generate a UNICODE special symbols for ASCII C0 control codes.
+
+        Useful for micro controllers and low level serial protocols.
+
+        https://en.wikipedia.org/wiki/C0_and_C1_control_codes#C0_.28ASCII_and_derivatives.29
+        """
+        mapped_data = ''
+        for c in data:
+            if c in UNICODE_MAP:
+                mapped_data += UNICODE_MAP[c]
+                if c == '\r' and self.convert_outgoing == CONVERT_CR:
+                    mapped_data += '\n'  # Advance line on \r
+                elif c == '\n':  # Advance screen on \n
+                    mapped_data += '\n'
+            else:
+                mapped_data += c
+            self._last_mapped_char = c
+        return mapped_data
+
     def reader(self):
         """loop and copy serial->console."""
         try:
             while self.alive and self._reader_alive:
                 data = character(self.serial.read(1))
-
-                if self.repr_mode == 0:
-                    # direct output, just have to care about newline setting
-                    if data == '\r' and self.convert_outgoing == CONVERT_CR:
-                        sys.stdout.write('\n')
-                    else:
-                        sys.stdout.write(data)
-                elif self.repr_mode in (1, 4):
-                    if self.repr_mode == 4 and bool(data) and data in '\r\n':
-                        sys.stdout.write(UNICODE_MAP[data])
-                    # escape non-printable, let pass newlines
-                    if self.convert_outgoing == CONVERT_CRLF and data in '\r\n':
-                        if data == '\n':
-                            sys.stdout.write('\n')
-                        elif data == '\r':
-                            pass
-                    elif data == '\n' and self.convert_outgoing == CONVERT_LF:
-                        sys.stdout.write('\n')
-                    elif data == '\r' and self.convert_outgoing == CONVERT_CR:
-                        sys.stdout.write('\n')
-                    else:
-                        if self.repr_mode == 1:
-                            sys.stdout.write(repr(data)[1:-1])
-                        elif self.repr_mode == 4:
-                            if data in UNICODE_MAP:
-                                sys.stdout.write(UNICODE_MAP[data])
-                            else:
-                                sys.stdout.write(repr(data)[1:-1])
-                elif self.repr_mode == 2:
-                    # escape all non-printable, including newline
-                    sys.stdout.write(repr(data)[1:-1])
-                elif self.repr_mode == 3:
-                    # escape everything (hexdump)
-                    for c in data:
-                        sys.stdout.write("%s " % c.encode('hex'))
+                output = self._repr_functions[self.repr_mode](data)
+                sys.stdout.write(colored(output, COLORS[1]))
                 sys.stdout.flush()
         except serial.SerialException:
             self.alive = False
@@ -329,6 +369,11 @@ class Miniterm(object):
             # point...
             raise
 
+    def _local_echo(self, data):
+        if self.echo:
+            output = self._repr_functions[self.repr_mode](data)
+            sys.stdout.write(colored(output, COLORS[0]))
+            sys.stdout.flush()
 
     def writer(self):
         """\
@@ -347,8 +392,7 @@ class Miniterm(object):
                 if menu_active:
                     if c == MENUCHARACTER or c == EXITCHARCTER: # Menu character again/exit char -> send itself
                         self.serial.write(b)                    # send character
-                        if self.echo:
-                            sys.stdout.write(c)
+                        self._local_echo(c)
                     elif c == '\x15':                       # CTRL+U -> upload file
                         sys.stderr.write('\n--- File to upload: ')
                         sys.stderr.flush()
@@ -502,14 +546,10 @@ class Miniterm(object):
                     break                                   # exit app
                 elif c == '\n':
                     self.serial.write(self.newline)         # send newline character(s)
-                    if self.echo:
-                        sys.stdout.write(c)                 # local echo is a real newline in any case
-                        sys.stdout.flush()
+                    self._local_echo(character(self.newline))  # We get to see the bytes printed out!
                 else:
                     self.serial.write(b)                    # send byte
-                    if self.echo:
-                        sys.stdout.write(c)
-                        sys.stdout.flush()
+                    self._local_echo(c)
         except:
             self.alive = False
             raise
