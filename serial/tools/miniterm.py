@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: UTF-8 -*-
 
 # Very simple serial terminal
 # (C)2002-2015 Chris Liechti <cliechti@gmx.net>
@@ -26,6 +27,46 @@ DEFAULT_PORT = None
 DEFAULT_BAUDRATE = 9600
 DEFAULT_RTS = None
 DEFAULT_DTR = None
+
+UNICODE_MAP = {
+    '\x00': u'\u2400',  # ␀
+    '\x01': u'\u2401',  # ␁
+    '\x02': u'\u2402',  # ␂
+    '\x03': u'\u2403',  # ␃
+    '\x04': u'\u2404',  # ␄
+    '\x05': u'\u2405',  # ␅
+    '\x06': u'\u2406',  # ␆
+    '\x07': u'\u2407',  # ␇
+    '\x08': u'\u2408',  # ␈
+    '\x09': u'\u2409',  # ␉
+    # '\x0A' : u'\u240A',  # ␊
+    '\x0A': u'\u2424',  # ␤  Note \x0A is line feed, but map to newline anyhow ;-)
+    '\x0B': u'\u240B',  # ␋
+    '\x0C': u'\u240C',  # ␌
+    '\x0D': u'\u240D',  # ␍
+    '\x0E': u'\u240E',  # ␎
+    '\x0F': u'\u240F',  # ␏
+    '\x10': u'\u2410',  # ␐
+    '\x11': u'\u2411',  # ␑
+    '\x12': u'\u2412',  # ␒
+    '\x13': u'\u2413',  # ␓
+    '\x14': u'\u2414',  # ␔
+    '\x15': u'\u2415',  # ␕
+    '\x16': u'\u2416',  # ␖
+    '\x17': u'\u2417',  # ␗
+    '\x18': u'\u2418',  # ␘
+    '\x19': u'\u2419',  # ␙
+    '\x1A': u'\u241A',  # ␚
+    '\x1B': u'\u241B',  # ␛
+    '\x1C': u'\u241C',  # ␜
+    '\x1D': u'\u241D',  # ␝
+    '\x1E': u'\u241E',  # ␞
+    '\x1F': u'\u241F',  # ␟
+    #'\x20': u'\u2420',  # ␠
+    ' ': u'\u2423',  # ␣  # I like the underbar space better than the [SP] space representation.
+    '\x7F': u'\u2421',  # ␡
+}
+
 
 
 def key_description(character):
@@ -168,7 +209,7 @@ CONVERT_LF   = 0
 NEWLINE_CONVERISON_MAP = (LF, CR, CRLF)
 LF_MODES = ('LF', 'CR', 'CR/LF')
 
-REPR_MODES = ('raw', 'some control', 'all control', 'hex')
+REPR_MODES = ('raw', 'some control', 'all control', 'hex', 'pretty')
 
 class Miniterm(object):
     def __init__(self, port, baudrate, parity, rtscts, xonxoff, echo=False, convert_outgoing=CONVERT_CRLF, repr_mode=0):
@@ -255,7 +296,9 @@ class Miniterm(object):
                         sys.stdout.write('\n')
                     else:
                         sys.stdout.write(data)
-                elif self.repr_mode == 1:
+                elif self.repr_mode in (1, 4):
+                    if self.repr_mode == 4 and bool(data) and data in '\r\n':
+                        sys.stdout.write(UNICODE_MAP[data])
                     # escape non-printable, let pass newlines
                     if self.convert_outgoing == CONVERT_CRLF and data in '\r\n':
                         if data == '\n':
@@ -267,7 +310,13 @@ class Miniterm(object):
                     elif data == '\r' and self.convert_outgoing == CONVERT_CR:
                         sys.stdout.write('\n')
                     else:
-                        sys.stdout.write(repr(data)[1:-1])
+                        if self.repr_mode == 1:
+                            sys.stdout.write(repr(data)[1:-1])
+                        elif self.repr_mode == 4:
+                            if data in UNICODE_MAP:
+                                sys.stdout.write(UNICODE_MAP[data])
+                            else:
+                                sys.stdout.write(repr(data)[1:-1])
                 elif self.repr_mode == 2:
                     # escape all non-printable, including newline
                     sys.stdout.write(repr(data)[1:-1])
@@ -345,7 +394,7 @@ class Miniterm(object):
                         self.dump_port_settings()
                     elif c == '\x01':                       # CTRL+A -> cycle escape mode
                         self.repr_mode += 1
-                        if self.repr_mode > 3:
+                        if self.repr_mode >= len(REPR_MODES):
                             self.repr_mode = 0
                         sys.stderr.write('--- escape data: %s ---\n' % (
                             REPR_MODES[self.repr_mode],
@@ -561,7 +610,8 @@ def main():
 0: just print what is received
 1: escape non-printable characters, do newlines as unusual
 2: escape non-printable characters, newlines too
-3: hex dump everything""",
+3: hex dump everything
+4: pretty print using Unicode.""",
         default = 0
     )
 
