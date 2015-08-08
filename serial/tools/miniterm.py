@@ -356,17 +356,17 @@ class Miniterm(object):
                         filename = sys.stdin.readline().rstrip('\r\n')
                         if filename:
                             try:
-                                file = open(filename, 'r')
-                                sys.stderr.write('--- Sending file %s ---\n' % filename)
-                                while True:
-                                    line = file.readline().rstrip('\r\n')
-                                    if not line:
-                                        break
-                                    self.serial.write(line)
-                                    self.serial.write('\r\n')
-                                    # Wait for output buffer to drain.
-                                    self.serial.flush()
-                                    sys.stderr.write('.')   # Progress indicator.
+                                with open(filename, 'r') as file_in:
+                                    sys.stderr.write('--- Sending file %s ---\n' % filename)
+                                    while True:
+                                        line = file_in.readline().rstrip('\r\n')
+                                        if not line:
+                                            break
+                                        self.serial.write(line)
+                                        self.serial.write(self.newline)
+                                        # Wait for output buffer to drain.
+                                        self.serial.flush()
+                                        sys.stderr.write('.')   # Progress indicator.
                                 sys.stderr.write('\n--- File %s sent ---\n' % filename)
                             except IOError as e:
                                 sys.stderr.write('--- ERROR opening file %s: %s ---\n' % (filename, e))
