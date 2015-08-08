@@ -692,8 +692,42 @@ def main():
     else:
         # no port given on command line -> ask user now
         if port is None:
-            dump_port_list()
-            port = raw_input('Enter port name:')
+            if comports:
+                available_ports = list(sorted(comports()))
+                while True:
+                    sys.stdout.write('Available ports:\n')
+                    sys.stdout.write('Index | Port information\n')
+                    sys.stdout.write('------|-----------------\n')
+                    for idx, (name, product, usb_info) in enumerate(available_ports):
+                        sys.stdout.write('{:>5d} | {}\n'.format(idx + 1, name))
+                        if product != 'n/a':
+                            sys.stdout.write('      |     {}\n'.format(product.strip()))
+                        if usb_info != 'n/a':
+                            sys.stdout.write('      |     {}\n'.format(usb_info.strip()))
+                        sys.stdout.write('      |\n')
+                    try:
+                        port_to_use_str = raw_input(
+                            "Please enter the index number of the device to use. 'q' to quit: "
+                        ).lower().strip()
+                        if port_to_use_str == 'q' or port_to_use_str == 'quit':
+                            sys.exit(0)
+                        port_to_use = int(port_to_use_str)
+                        port = available_ports[port_to_use - 1][0]
+                    except ValueError:
+                        sys.stdout.write(
+                            "\nError: The input {!r} was not a legal integer. Try again.\n".format(port_to_use_str)
+                        )
+                    except IndexError:
+                        sys.stdout.write(
+                            "\nError: The input {} was not an acceptable port number. Try again.\n".format(port_to_use_str)
+                        )
+                    except (EOFError, KeyboardInterrupt):  # Catch ctrl-c and EOF (unix ctrl-d, Win ctrl-z)
+                        sys.stdout.write('\n')
+                        sys.exit(0)
+                    else:
+                        break
+            else:
+                port = raw_input('Enter port name:')
 
     convert_outgoing = CONVERT_CRLF
     if options.cr:
