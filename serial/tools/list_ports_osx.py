@@ -82,7 +82,7 @@ def get_string_property(device_t, property):
         key,
         kCFAllocatorDefault,
         0
-    );
+    )
 
     output = None
 
@@ -109,7 +109,7 @@ def get_int_property(device_t, property):
         key,
         kCFAllocatorDefault,
         0
-    );
+    )
 
     number = ctypes.c_uint16()
 
@@ -197,8 +197,8 @@ def comports():
                     get_string_property(usb_device, "USB Serial Number"))
                 )
             else:
-               info.append('n/a')
-               info.append('n/a')
+                info.append('n/a')
+                info.append('n/a')
 
             ports.append(info)
 
@@ -208,4 +208,3 @@ def comports():
 if __name__ == '__main__':
     for port, desc, hwid in sorted(comports()):
         print("%s: %s [%s]" % (port, desc, hwid))
-
